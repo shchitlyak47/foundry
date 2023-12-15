@@ -35,17 +35,17 @@ use std::{
 // Various future/request type aliases
 
 type AccountFuture<Err> =
-    Pin<Box<dyn Future<Output = (Result<(U256, U256, Bytes), Err>, Address)> + Send>>;
-type StorageFuture<Err> = Pin<Box<dyn Future<Output = (Result<U256, Err>, Address, U256)> + Send>>;
-type BlockHashFuture<Err> = Pin<Box<dyn Future<Output = (Result<H256, Err>, u64)> + Send>>;
+Pin<Box<dyn Future<Output=(Result<(U256, U256, Bytes), Err>, Address)> + Send>>;
+type StorageFuture<Err> = Pin<Box<dyn Future<Output=(Result<U256, Err>, Address, U256)> + Send>>;
+type BlockHashFuture<Err> = Pin<Box<dyn Future<Output=(Result<H256, Err>, u64)> + Send>>;
 type FullBlockFuture<Err> = Pin<
     Box<
-        dyn Future<Output = (FullBlockSender, Result<Option<Block<Transaction>>, Err>, BlockId)>
-            + Send,
+        dyn Future<Output=(FullBlockSender, Result<Option<Block<Transaction>>, Err>, BlockId)>
+        + Send,
     >,
 >;
 type TransactionFuture<Err> = Pin<
-    Box<dyn Future<Output = (TransactionSender, Result<Option<Transaction>, Err>, H256)> + Send>,
+    Box<dyn Future<Output=(TransactionSender, Result<Option<Transaction>, Err>, H256)> + Send>,
 >;
 
 type AccountInfoSender = OneshotSender<DatabaseResult<AccountInfo>>;
@@ -107,8 +107,8 @@ pub struct BackendHandler<M: Middleware> {
 }
 
 impl<M> BackendHandler<M>
-where
-    M: Middleware + Clone + 'static,
+    where
+        M: Middleware + Clone + 'static,
 {
     fn new(
         provider: M,
@@ -291,8 +291,8 @@ where
 }
 
 impl<M> Future for BackendHandler<M>
-where
-    M: Middleware + Clone + Unpin + 'static,
+    where
+        M: Middleware + Clone + Unpin + 'static,
 {
     type Output = ();
 
@@ -312,7 +312,7 @@ where
                     }
                     Poll::Ready(None) => {
                         trace!(target: "backendhandler", "last sender dropped, ready to drop (&flush cache)");
-                        return Poll::Ready(())
+                        return Poll::Ready(());
                     }
                     Poll::Pending => break,
                 }
@@ -337,7 +337,7 @@ where
                                             )));
                                         })
                                     }
-                                    continue
+                                    continue;
                                 }
                             };
 
@@ -363,7 +363,7 @@ where
                                     let _ = l.send(Ok(acc.clone()));
                                 })
                             }
-                            continue
+                            continue;
                         }
                     }
                     ProviderRequest::Storage(fut) => {
@@ -374,7 +374,7 @@ where
                                     // notify all listeners
                                     let err = Arc::new(eyre::Error::new(err));
                                     if let Some(listeners) =
-                                        pin.storage_requests.remove(&(addr, idx))
+                                    pin.storage_requests.remove(&(addr, idx))
                                     {
                                         listeners.into_iter().for_each(|l| {
                                             let _ = l.send(Err(DatabaseError::GetStorage(
@@ -384,7 +384,7 @@ where
                                             )));
                                         })
                                     }
-                                    continue
+                                    continue;
                                 }
                             };
 
@@ -402,7 +402,7 @@ where
                                     let _ = l.send(Ok(value));
                                 })
                             }
-                            continue
+                            continue;
                         }
                     }
                     ProviderRequest::BlockHash(fut) => {
@@ -420,7 +420,7 @@ where
                                             )));
                                         })
                                     }
-                                    continue
+                                    continue;
                                 }
                             };
 
@@ -433,7 +433,7 @@ where
                                     let _ = l.send(Ok(value));
                                 })
                             }
-                            continue
+                            continue;
                         }
                     }
                     ProviderRequest::FullBlock(fut) => {
@@ -447,7 +447,7 @@ where
                                 }
                             };
                             let _ = sender.send(msg);
-                            continue
+                            continue;
                         }
                     }
                     ProviderRequest::Transaction(fut) => {
@@ -461,7 +461,7 @@ where
                                 }
                             };
                             let _ = sender.send(msg);
-                            continue
+                            continue;
                         }
                     }
                 }
@@ -472,7 +472,7 @@ where
             // If no new requests have been queued, break to
             // be polled again later.
             if pin.queued_requests.is_empty() {
-                return Poll::Pending
+                return Poll::Pending;
             }
         }
     }
@@ -526,8 +526,8 @@ impl SharedBackend {
     ///
     /// NOTE: this should be called with `Arc<Provider>`
     pub async fn spawn_backend<M>(provider: M, db: BlockchainDb, pin_block: Option<BlockId>) -> Self
-    where
-        M: Middleware + Unpin + 'static + Clone,
+        where
+            M: Middleware + Unpin + 'static + Clone,
     {
         let (shared, handler) = Self::new(provider, db, pin_block);
         // spawn the provider handler to a task
@@ -543,8 +543,8 @@ impl SharedBackend {
         db: BlockchainDb,
         pin_block: Option<BlockId>,
     ) -> Self
-    where
-        M: Middleware + Unpin + 'static + Clone,
+        where
+            M: Middleware + Unpin + 'static + Clone,
     {
         let (shared, handler) = Self::new(provider, db, pin_block);
 
@@ -572,8 +572,8 @@ impl SharedBackend {
         db: BlockchainDb,
         pin_block: Option<BlockId>,
     ) -> (Self, BackendHandler<M>)
-    where
-        M: Middleware + Unpin + 'static + Clone,
+        where
+            M: Middleware + Unpin + 'static + Clone,
     {
         let (backend, backend_rx) = channel(1);
         let cache = Arc::new(FlushJsonBlockCacheDB(Arc::clone(db.cache())));
@@ -589,49 +589,39 @@ impl SharedBackend {
 
     /// Returns the full block for the given block identifier
     pub fn get_full_block(&self, block: impl Into<BlockId>) -> DatabaseResult<Block<Transaction>> {
-        tokio::task::block_in_place(|| {
-            let (sender, rx) = oneshot_channel();
-            let req = BackendRequest::FullBlock(block.into(), sender);
-            self.backend.clone().try_send(req)?;
-            rx.recv()?
-        })
+        let (sender, rx) = oneshot_channel();
+        let req = BackendRequest::FullBlock(block.into(), sender);
+        self.backend.clone().try_send(req)?;
+        rx.recv()?
     }
 
     /// Returns the transaction for the hash
     pub fn get_transaction(&self, tx: H256) -> DatabaseResult<Transaction> {
-        tokio::task::block_in_place(|| {
-            let (sender, rx) = oneshot_channel();
-            let req = BackendRequest::Transaction(tx, sender);
-            self.backend.clone().try_send(req)?;
-            rx.recv()?
-        })
+        let (sender, rx) = oneshot_channel();
+        let req = BackendRequest::Transaction(tx, sender);
+        self.backend.clone().try_send(req)?;
+        rx.recv()?
     }
 
     fn do_get_basic(&self, address: Address) -> DatabaseResult<Option<AccountInfo>> {
-        tokio::task::block_in_place(|| {
-            let (sender, rx) = oneshot_channel();
-            let req = BackendRequest::Basic(address, sender);
-            self.backend.clone().try_send(req)?;
-            rx.recv()?.map(Some)
-        })
+        let (sender, rx) = oneshot_channel();
+        let req = BackendRequest::Basic(address, sender);
+        self.backend.clone().try_send(req)?;
+        rx.recv()?.map(Some)
     }
 
     fn do_get_storage(&self, address: Address, index: U256) -> DatabaseResult<U256> {
-        tokio::task::block_in_place(|| {
-            let (sender, rx) = oneshot_channel();
-            let req = BackendRequest::Storage(address, index, sender);
-            self.backend.clone().try_send(req)?;
-            rx.recv()?
-        })
+        let (sender, rx) = oneshot_channel();
+        let req = BackendRequest::Storage(address, index, sender);
+        self.backend.clone().try_send(req)?;
+        rx.recv()?
     }
 
     fn do_get_block_hash(&self, number: u64) -> DatabaseResult<H256> {
-        tokio::task::block_in_place(|| {
-            let (sender, rx) = oneshot_channel();
-            let req = BackendRequest::BlockHash(number, sender);
-            self.backend.clone().try_send(req)?;
-            rx.recv()?
-        })
+        let (sender, rx) = oneshot_channel();
+        let req = BackendRequest::BlockHash(number, sender);
+        self.backend.clone().try_send(req)?;
+        rx.recv()?
     }
 
     /// Flushes the DB to disk if caching is enabled
@@ -665,7 +655,7 @@ impl DatabaseRef for SharedBackend {
             if err.is_possibly_non_archive_node_error() {
                 error!(target: "sharedbackend", "{NON_ARCHIVE_NODE_WARNING}");
             }
-          err
+            err
         }) {
             Ok(val) => Ok(val.into()),
             Err(err) => Err(err),
@@ -674,7 +664,7 @@ impl DatabaseRef for SharedBackend {
 
     fn block_hash(&self, number: rU256) -> Result<B256, Self::Error> {
         if number > rU256::from(u64::MAX) {
-            return Ok(KECCAK_EMPTY)
+            return Ok(KECCAK_EMPTY);
         }
         let number: U256 = number.into();
         let number = number.as_u64();
@@ -704,6 +694,7 @@ mod tests {
     use foundry_common::get_http_provider;
     use foundry_config::Config;
     use std::{collections::BTreeSet, path::PathBuf, sync::Arc};
+
     const ENDPOINT: &str = "https://mainnet.infura.io/v3/40bee2d557ed4b52908c3e62345a3d8b";
 
     #[tokio::test(flavor = "multi_thread")]
